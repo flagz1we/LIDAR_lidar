@@ -1,0 +1,8 @@
+/build/
+/install/
+/log/
+/src/third_party
+
+*.gv
+*.pdf
+*.pgm
