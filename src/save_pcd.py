@@ -26,7 +26,7 @@ class PCDSaver(Node):
             PointCloud2, self.topic, self.callback, qos)
 
         # 保存目录（按需修改）
-        self.output_dir = '/home/rm/RM2027/src/gicp/pcd'
+        self.output_dir = '/home/rm/LIDAR_Station/src/gicp/pcd'
         os.makedirs(self.output_dir, exist_ok=True)
 
         # 监听时长（秒）：到点后停止接收，统一处理一次
