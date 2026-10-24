@@ -19,20 +19,20 @@ class PCDSaver(Node):
     def __init__(self):
         super().__init__('pcd_saver')
         # 修改为你的实际点云话题
-        self.topic = '/cloud_registered'
+        self.topic = '/livox/lidar'
         # 使用 BEST_EFFORT 保证实时性（也可用 RELIABLE）
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.sub = self.create_subscription(
             PointCloud2, self.topic, self.callback, qos)
 
         # 保存目录（按需修改）
-        self.output_dir = '/home/rm/LIDAR_Station/src/gicp/pcd'
+        self.output_dir = '/home/tjurm/LIDAR_lidar/src/gicp/pcd'
         os.makedirs(self.output_dir, exist_ok=True)
 
         # 监听时长（秒）：到点后停止接收，统一处理一次
         self.listen_duration = 5.0
         # 体素降采样尺寸（米）；0 = 不降采样
-        self.voxel_size = 0.05
+        self.voxel_size = 0
 
         # 累积 5s 内所有帧的点，最后合并成一块点云
         self._points = []
@@ -47,19 +47,31 @@ class PCDSaver(Node):
             f'then voxel_down_sample({self.voxel_size}) and save once to {self.output_dir}')
 
     @staticmethod
+    @staticmethod
     def _extract_xyz(msg):
-        """从 PointCloud2 中提取 (N, 3) 的 xyz 点坐标。
-
-        显式按字段名取 x/y/z，避免依赖字段顺序或混合数据类型导致转换失败。
-        """
-        # 新接口：直接返回 numpy 数组，性能最好
+        """从 PointCloud2 中提取 (N, 3) 的 float32 xyz 点坐标。"""
+        # 统一拿到「结构化数组」：字段名 x/y/z，元素类型是 record
+        pts = None
         if hasattr(pc2, 'read_points_numpy'):
-            return pc2.read_points_numpy(
-                msg, field_names=['x', 'y', 'z'], skip_nans=True)
-        # 旧接口兜底：field_names 只取 x/y/z，类型统一，不会混入 intensity
-        return np.array(list(pc2.read_points(
-            msg, field_names=['x', 'y', 'z'], skip_nans=True)))
+            try:
+                pts = pc2.read_points_numpy(
+                    msg, field_names=['x', 'y', 'z'], skip_nans=True)
+            except Exception:
+                pts = None
 
+        if pts is None:
+            # 旧接口兜底：read_points 返回生成器，先转 list 再转数组
+            pts = pc2.read_points(
+                msg, field_names=['x', 'y', 'z'], skip_nans=True)
+            pts = np.array(list(pts)) if pts is not None else None
+
+        if pts is None or len(pts) == 0:
+            return np.empty((0, 3), dtype=np.float32)
+
+        # 关键：从结构化数组里分别取 x / y / z 三列，再 stack 成 (N,3)
+        xyz = np.stack([pts['x'], pts['y'], pts['z']], axis=-1)
+        return xyz.astype(np.float32)
+    
     def callback(self, msg):
         try:
             points = self._extract_xyz(msg)
